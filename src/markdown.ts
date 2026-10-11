@@ -17,14 +17,40 @@ export type Block =
   | { type: 'list'; ordered: boolean; items: ListItem[] }
   | { type: 'code'; lang: string; text: string }
   | { type: 'table'; headers: Inline[][]; rows: Inline[][][] }
-  | { type: 'week'; week: number; fields: WeekField[] }
   | { type: 'readiness'; id: number; title: Inline[]; lines: Inline[][] }
 
-export type WeekField = {
-  key: string
-  label: string
-  hint: string
-  multiline: boolean
+export type Task = {
+  id: string
+  title: Inline[]
+  hours: number
+  optional: boolean
+  check: Inline[] | null
+  body: Block[]
+}
+
+export type Section = {
+  id: string
+  title: Inline[]
+  preface: Block[]
+  tasks: Task[]
+}
+
+export type Plan = {
+  title: Inline[]
+  intro: Block[]
+  sections: Section[]
+}
+
+const TASK_HEADING = /^(.+?) · (\d+(?:\.\d+)?) hours?(?: · Optional)?$/
+
+export function slug(text: string): string {
+  const base = text
+    .normalize('NFD')
+    .replace(/\p{M}/gu, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+  return base || 'section'
 }
 
 export function checkboxKey(label: string): string {
@@ -107,40 +133,6 @@ function isSeparator(line: string): boolean {
   return /^\|?\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)+\|?$/.test(line.trim())
 }
 
-function weekFields(lines: string[], start: number, week: number): { end: number; fields: WeekField[] } | null {
-  let i = start
-  while (i < lines.length && lines[i]?.trim() === '') i += 1
-
-  const fields: WeekField[] = []
-  const hours = lines[i] ?? ''
-  const checkpoint = lines[i + 1] ?? ''
-  const repeat = lines[i + 2] ?? ''
-  if (!hours.startsWith('- Hours:')) return null
-  if (!checkpoint.startsWith('- Checkpoint (')) return null
-  if (!checkpoint.endsWith('):')) return null
-  if (!repeat.startsWith('- Repeat:')) return null
-
-  fields.push({
-    key: `week:${week}:hours`,
-    label: 'Hours',
-    hint: '',
-    multiline: false,
-  })
-  fields.push({
-    key: `week:${week}:checkpoint`,
-    label: 'Checkpoint',
-    hint: checkpoint.slice('- Checkpoint ('.length, -2),
-    multiline: true,
-  })
-  fields.push({
-    key: `week:${week}:repeat`,
-    label: 'Repeat',
-    hint: '',
-    multiline: false,
-  })
-  return { end: i + 3, fields }
-}
-
 export function parseMarkdown(source: string): Block[] {
   const lines = source.replace(/\r\n/g, '\n').split('\n')
   const blocks: Block[] = []
@@ -184,15 +176,6 @@ export function parseMarkdown(source: string): Block[] {
     if (heading) {
       const level = heading[1]!.length as 1 | 2 | 3
       const text = heading[2] ?? ''
-      const week = level === 3 ? /^Week (\d+)$/.exec(text) : null
-      if (week) {
-        const parsed = weekFields(lines, i + 1, Number(week[1]))
-        if (parsed) {
-          blocks.push({ type: 'week', week: Number(week[1]), fields: parsed.fields })
-          i = parsed.end
-          continue
-        }
-      }
 
       const readiness = level === 3 ? /^(\d+)\. (.*)$/.exec(text) : null
       if (readiness) {
@@ -266,4 +249,111 @@ export function inlineText(nodes: Inline[]): string {
       return inlineText(node.children)
     })
     .join('')
+}
+
+function checkPrompt(block: Block): Inline[] | null {
+  if (block.type !== 'paragraph' || block.children.length === 0) return null
+  const [first, ...rest] = block.children
+  if (first?.type !== 'strong' || inlineText(first.children).trim() !== 'Check.') return null
+  const prompt = rest.map((node) => ({ ...node }))
+  const leading = prompt[0]
+  if (leading?.type === 'text') leading.text = leading.text.replace(/^\s+/, '')
+  return prompt
+}
+
+function uniqueSlug(text: string, used: Set<string>): string {
+  const base = slug(text)
+  let id = base
+  let n = 2
+  while (used.has(id)) {
+    id = `${base}-${n}`
+    n += 1
+  }
+  used.add(id)
+  return id
+}
+
+type OpenTask = {
+  id: string
+  title: Inline[]
+  hours: number
+  optional: boolean
+  body: Block[]
+}
+
+export function parsePlan(source: string): Plan {
+  const blocks = parseMarkdown(source)
+  const plan: Plan = { title: [], intro: [], sections: [] }
+  const sectionIds = new Set<string>()
+  const taskIds = new Set<string>()
+  let section: Section | null = null
+  let task: OpenTask | null = null
+
+  const closeTask = () => {
+    if (!task || !section) {
+      task = null
+      return
+    }
+    let check: Inline[] | null = null
+    const body: Block[] = []
+    for (const block of task.body) {
+      const prompt = checkPrompt(block)
+      if (prompt) {
+        if (!check) check = prompt
+        continue
+      }
+      body.push(block)
+    }
+    section.tasks.push({
+      id: task.id,
+      title: task.title,
+      hours: task.hours,
+      optional: task.optional,
+      check,
+      body,
+    })
+    task = null
+  }
+
+  for (const block of blocks) {
+    if (block.type === 'heading' && block.level === 1 && plan.title.length === 0) {
+      plan.title = block.children
+      continue
+    }
+
+    if (block.type === 'heading' && block.level === 2) {
+      closeTask()
+      section = {
+        id: uniqueSlug(inlineText(block.children), sectionIds),
+        title: block.children,
+        preface: [],
+        tasks: [],
+      }
+      plan.sections.push(section)
+      continue
+    }
+
+    if (block.type === 'heading' && block.level === 3) {
+      const match = TASK_HEADING.exec(inlineText(block.children))
+      if (match && section) {
+        closeTask()
+        const titleText = match[1] ?? ''
+        task = {
+          id: uniqueSlug(titleText, taskIds),
+          title: parseInline(titleText),
+          hours: Number(match[2]),
+          optional: inlineText(block.children).endsWith('· Optional'),
+          body: [],
+        }
+        continue
+      }
+    }
+
+    if (task) task.body.push(block)
+    else if (section) section.preface.push(block)
+    else if (block.type !== 'heading' || block.level !== 1) plan.intro.push(block)
+  }
+
+  closeTask()
+  return plan
 }

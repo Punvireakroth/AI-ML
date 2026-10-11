@@ -1,11 +1,12 @@
 import type { ReactNode } from 'react'
-import { pageForHref } from './content'
-import { inlineText, parseMarkdown, type Block, type Inline } from './markdown'
+import { inlineText, type Block, type Inline } from './markdown'
 import { useProgress } from './progress'
 
-const phases = ['Setup', 'Math', 'Core ML', 'Neural nets', 'Readiness']
+function scrollToId(id: string) {
+  document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+}
 
-function Inlines({ nodes }: { nodes: Inline[] }) {
+export function Inlines({ nodes }: { nodes: Inline[] }) {
   return (
     <>
       {nodes.map((node, index) => {
@@ -23,10 +24,18 @@ function Inlines({ nodes }: { nodes: Inline[] }) {
               <Inlines nodes={node.children} />
             </em>
           )
-        const page = pageForHref(node.href)
-        if (page) {
+        if (node.href.startsWith('#')) {
+          const id = decodeURIComponent(node.href.slice(1))
           return (
-            <a key={index} href={`#/${page}`}>
+            <a
+              key={index}
+              href={node.href}
+              onClick={(event) => {
+                if (!document.getElementById(id)) return
+                event.preventDefault()
+                scrollToId(id)
+              }}
+            >
               <Inlines nodes={node.children} />
             </a>
           )
@@ -41,40 +50,15 @@ function Inlines({ nodes }: { nodes: Inline[] }) {
   )
 }
 
-function PhaseFlow() {
-  return (
-    <div className="flow" aria-label="Study phases">
-      {phases.map((phase, index) => (
-        <span key={phase} className="flow-step">
-          {index > 0 && <span className="flow-arrow">→</span>}
-          <span>{phase}</span>
-        </span>
-      ))}
-    </div>
-  )
-}
-
-export function MarkdownView({ source }: { source: string }) {
-  const blocks = parseMarkdown(source)
+export function Blocks({ blocks }: { blocks: Block[] }) {
   const { checks, notes, toggleCheck, setNote } = useProgress()
-  const readiness = blocks.filter((block) => block.type === 'readiness')
-  const fromMemory = readiness.filter((block) => notes[`readiness:${block.id}:status`] === 'memory').length
 
   return (
-    <article className="page">
+    <>
       {blocks.map((block, index) => (
-        <BlockView
-          key={index}
-          block={block}
-          checks={checks}
-          notes={notes}
-          fromMemory={fromMemory}
-          readinessTotal={readiness.length}
-          onToggle={toggleCheck}
-          onNote={setNote}
-        />
+        <BlockView key={index} block={block} checks={checks} notes={notes} onToggle={toggleCheck} onNote={setNote} />
       ))}
-    </article>
+    </>
   )
 }
 
@@ -82,33 +66,21 @@ function BlockView({
   block,
   checks,
   notes,
-  fromMemory,
-  readinessTotal,
   onToggle,
   onNote,
 }: {
   block: Block
   checks: Record<string, boolean>
   notes: Record<string, string>
-  fromMemory: number
-  readinessTotal: number
   onToggle: (key: string) => void
   onNote: (key: string, body: string) => void
 }) {
   if (block.type === 'heading') {
     const Tag = `h${block.level}` as 'h1' | 'h2' | 'h3'
-    const showScore = block.level === 2 && inlineText(block.children) === 'Day-1 readiness'
     return (
-      <>
-        <Tag>
-          <Inlines nodes={block.children} />
-        </Tag>
-        {showScore && (
-          <p className="score">
-            From memory: {fromMemory} of {readinessTotal}
-          </p>
-        )}
-      </>
+      <Tag>
+        <Inlines nodes={block.children} />
+      </Tag>
     )
   }
 
@@ -121,7 +93,6 @@ function BlockView({
   }
 
   if (block.type === 'code') {
-    if (block.lang === 'mermaid') return <PhaseFlow />
     return (
       <pre>
         <code>{block.text}</code>
@@ -160,32 +131,6 @@ function BlockView({
 
   if (block.type === 'list') {
     return <ItemList items={block.items} ordered={block.ordered} checks={checks} onToggle={onToggle} />
-  }
-
-  if (block.type === 'week') {
-    return (
-      <section className="week">
-        <h3>Week {block.week}</h3>
-        {block.fields.map((field) => (
-          <label key={field.key} className="field">
-            <span>{field.label}</span>
-            {field.multiline ? (
-              <textarea
-                rows={2}
-                placeholder={field.hint}
-                value={notes[field.key] ?? ''}
-                onChange={(event) => onNote(field.key, event.target.value)}
-              />
-            ) : (
-              <input
-                value={notes[field.key] ?? ''}
-                onChange={(event) => onNote(field.key, event.target.value)}
-              />
-            )}
-          </label>
-        ))}
-      </section>
-    )
   }
 
   const status = notes[`readiness:${block.id}:status`] ?? ''
@@ -258,7 +203,7 @@ function ItemList({
   checks: Record<string, boolean>
   onToggle: (key: string) => void
 }) {
-  const todos = items.every((item) => item.kind === 'todo')
+  const todos = items.length > 0 && items.every((item) => item.kind === 'todo')
   if (todos) {
     return (
       <div className="todos">
