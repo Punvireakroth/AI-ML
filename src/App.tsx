@@ -23,6 +23,7 @@ import { MIGRATION_PATH } from './supabase'
 export function App() {
   const { checks, notes, toggleCheck, setNote } = useProgress()
   const [open, setOpen] = useState<Record<string, boolean>>({})
+  const [settingsOpen, setSettingsOpen] = useState(false)
   const today = todayISO()
 
   const done = useMemo(() => {
@@ -67,52 +68,70 @@ export function App() {
 
   return (
     <div className="shell">
-      <header className="bar">
+      <header className={settingsOpen ? 'bar open' : 'bar'}>
         <div className="bar-inner">
-          <strong className="brand">AI/ML prep</strong>
-          <p className="status-line">{statusMessage(schedule, notes[PLAN_TARGET] || null, today, Boolean(notes[PLAN_HOURS]?.trim()))}</p>
-          <div className="settings">
-            <label>
-              Start date
-              <input
-                type="date"
-                value={notes[PLAN_ANCHOR] ?? ''}
-                onChange={(event) => setNote(PLAN_ANCHOR, event.target.value)}
-              />
-            </label>
-            <label>
-              Hours per week
-              <input
-                type="number"
-                min={0.5}
-                max={80}
-                step={0.5}
-                placeholder="6"
-                value={notes[PLAN_HOURS] ?? ''}
-                onChange={(event) => setNote(PLAN_HOURS, event.target.value)}
-              />
-            </label>
-            <label>
-              Target date
-              <input
-                type="date"
-                value={notes[PLAN_TARGET] ?? ''}
-                onChange={(event) => setNote(PLAN_TARGET, event.target.value)}
-              />
-            </label>
-            {notes[PLAN_TARGET] && (
-              <button type="button" onClick={() => setNote(PLAN_TARGET, '')}>
-                Clear target
-              </button>
-            )}
-            <button type="button" className="primary" onClick={resetDeadlines}>
-              Reset deadlines from today
+          <div className="bar-top">
+            <strong className="brand">AI/ML prep</strong>
+            <button
+              type="button"
+              className="settings-toggle"
+              aria-label={settingsOpen ? 'Hide settings' : 'Show settings'}
+              aria-expanded={settingsOpen}
+              aria-controls="settings-panel"
+              onClick={() => setSettingsOpen((current) => !current)}
+            >
+              <SettingsIcon />
             </button>
           </div>
-          {parseAnchorDone(notes[PLAN_ANCHOR_DONE]).length > 0 && (
-            <p className="hint">Finished tasks are left out of these deadlines. The rest are scheduled from the start date.</p>
+          {settingsOpen && (
+            <div id="settings-panel" className="settings-panel">
+              <p className="status-line">{statusMessage(schedule, notes[PLAN_TARGET] || null, today, Boolean(notes[PLAN_HOURS]?.trim()))}</p>
+              <div className="settings">
+                <label>
+                  Start date
+                  <input
+                    type="date"
+                    value={notes[PLAN_ANCHOR] ?? ''}
+                    onChange={(event) => setNote(PLAN_ANCHOR, event.target.value)}
+                  />
+                </label>
+                <label>
+                  Hours per week
+                  <input
+                    type="number"
+                    min={0.5}
+                    max={80}
+                    step={0.5}
+                    placeholder="6"
+                    value={notes[PLAN_HOURS] ?? ''}
+                    onChange={(event) => setNote(PLAN_HOURS, event.target.value)}
+                  />
+                </label>
+                <label>
+                  Target date
+                  <input
+                    type="date"
+                    value={notes[PLAN_TARGET] ?? ''}
+                    onChange={(event) => setNote(PLAN_TARGET, event.target.value)}
+                  />
+                </label>
+                {notes[PLAN_TARGET] && (
+                  <button type="button" onClick={() => setNote(PLAN_TARGET, '')}>
+                    Clear target
+                  </button>
+                )}
+                <button type="button" className="primary" onClick={resetDeadlines}>
+                  Reset deadlines from today
+                </button>
+              </div>
+              {parseAnchorDone(notes[PLAN_ANCHOR_DONE]).length > 0 && (
+                <p className="hint">
+                  Finished tasks are left out of these deadlines. The rest are scheduled from the start date.
+                </p>
+              )}
+              <Account />
+            </div>
           )}
-          <Account />
         </div>
       </header>
       <main className="content">
@@ -378,6 +397,17 @@ function Reference({ section, notes }: { section: Section; notes: Record<string,
       )}
       <Blocks blocks={section.preface} />
     </section>
+  )
+}
+
+function SettingsIcon() {
+  return (
+    <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
+      <path
+        fill="currentColor"
+        d="M19.14 12.94c.04-.31.06-.63.06-.94s-.02-.63-.06-.94l2.03-1.58a.5.5 0 0 0 .12-.64l-1.92-3.32a.5.5 0 0 0-.6-.22l-2.39.96a7 7 0 0 0-1.62-.94l-.36-2.54A.5.5 0 0 0 13.9 2h-3.8a.5.5 0 0 0-.5.42l-.36 2.54c-.59.24-1.13.55-1.62.94l-2.39-.96a.5.5 0 0 0-.6.22L2.71 8.48a.5.5 0 0 0 .12.64L4.86 10.7c-.04.31-.06.63-.06.94s.02.63.06.94l-2.03 1.58a.5.5 0 0 0-.12.64l1.92 3.32c.13.23.4.32.64.22l2.39-.96c.49.39 1.03.7 1.62.94l.36 2.54c.05.24.26.42.5.42h3.8c.24 0 .45-.18.5-.42l.36-2.54c.59-.24 1.13-.55 1.62-.94l2.39.96c.24.1.51 0 .64-.22l1.92-3.32a.5.5 0 0 0-.12-.64zM12 15.5A3.5 3.5 0 1 1 12 8.5a3.5 3.5 0 0 1 0 7z"
+      />
+    </svg>
   )
 }
 

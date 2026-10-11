@@ -40,7 +40,7 @@ textarea {
   flex: none;
   background: #f7f6f3;
   border-bottom: 1px solid rgba(55, 53, 47, 0.09);
-  padding: 14px 20px 12px;
+  padding: 10px 20px;
 }
 
 .bar-inner {
@@ -51,6 +51,13 @@ textarea {
   gap: 10px;
 }
 
+.bar-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+
 .brand {
   font-size: 14px;
 }
@@ -59,6 +66,35 @@ textarea {
   margin: 0;
   font-size: 14px;
   line-height: 1.45;
+}
+
+.settings-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border: none;
+  background: rgba(55, 53, 47, 0.06);
+  border-radius: 4px;
+  padding: 0;
+  cursor: pointer;
+}
+
+.settings-toggle:hover {
+  background: rgba(55, 53, 47, 0.1);
+}
+
+.settings-toggle[aria-expanded='true'] {
+  background: #37352f;
+  color: #ffffff;
+}
+
+.settings-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-top: 4px;
 }
 
 .settings {
